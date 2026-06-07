@@ -29,22 +29,34 @@ npm run tauri dev
 
 ## 配布物
 
-- `.app`: `src-tauri/target/release/bundle/macos/Hazakura Vectorizer.app` (8.7M)
-- `.dmg`: `src-tauri/target/release/bundle/dmg/Hazakura Vectorizer_0.1.0_aarch64.dmg` (3.1M)
-- バイナリ単体: `src-tauri/target/release/hazakura-vectorizer` (8.6M)
+- `.app`: `src-tauri/target/release/bundle/macos/Hazakura Vectorizer.app` (11M, vtracer 同梱)
+- `.dmg`: `src-tauri/target/release/bundle/dmg/Hazakura Vectorizer_0.1.0_aarch64.dmg`
+- バイナリ単体: `src-tauri/target/release/hazakura-vectorizer`
+- **vtracer 同梱**: `src-tauri/binaries/vtracer-aarch64-apple-darwin` (2.1MB, commit 済み)
 
 ## リモート
 
 - GitHub: <https://github.com/lero003/hazakura-vectorizer> (private)
-- コミット: `8baf3ee Initial commit: Hazakura Vectorizer v0.1`
-- アップロードされたファイル: 66 ファイル / 11K 行。`node_modules` / `dist` / `src-tauri/target` / `*.app` / `*.dmg` / `.DS_Store` は除外済み。機密情報なし。
+- コミット履歴:
+  - `8baf3ee Initial commit: Hazakura Vectorizer v0.1`
+  - `d5a13a0 Bundle vtracer binary into the .app (Tauri externalBin)`
+- アップロードされたファイル: ソース / 設定 / ドキュメント / アイコン / vtracer バイナリ (合計 67 ファイル)。`node_modules` / `dist` / `src-tauri/target` / `*.app` / `*.dmg` / `.DS_Store` は除外済み。機密情報なし。
 
 ## 前提依存
 
-- Node 18+ / npm (Node 26 / npm 11.12 で検証)
-- Rust stable (1.95 で検証)
+**ビルド時のみ必要**(エンドユーザは .app をダブルクリックで動く):
+- Node 18+ / npm
+- Rust stable
 - Tauri CLI v2 (`npm install -g @tauri-apps/cli@latest`)
-- vtracer 0.6.5 (`cargo install vtracer` — brew には formula がない)
+
+**vtracer は .app に同梱済み** — 別途インストール不要。
+
+x86_64 (Intel Mac) 用にビルドする場合は:
+```bash
+# Intel Mac で vtracer をビルド
+cargo install vtracer --target x86_64-apple-darwin
+cp ~/.cargo/bin/vtracer src-tauri/binaries/vtracer-x86_64-apple-darwin
+```
 
 ## 実装サマリ
 
