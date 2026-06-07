@@ -2,21 +2,32 @@
 
 ## 状態
 
-v0.1.0 公開済み。GitHub Release `v0.1.0` に DMG / `.app.zip` / `SHA256SUMS.txt` をアップロード済み。
+v0.1.0 / v0.1.1 公開済み。GitHub Release `v0.1.0` (初版) と `v0.1.1` (桜アイコンへの差し替え + チェックサム透明化) を公開。
 リポジトリは public (<https://github.com/lero003/hazakura-vectorizer>)。
 
 `cargo check` / `npx tsc --noEmit` / `npm run build` / `npm run tauri build` すべて通過。
 実 GUI での E2E スモークは未実施 (CI / ローカルから実行しただけ)。
 
-## 公開リリース (v0.1.0)
+## 公開リリース (v0.1.1 — Latest)
 
-- リリース: <https://github.com/lero003/hazakura-vectorizer/releases/tag/v0.1.0>
+- リリース: <https://github.com/lero003/hazakura-vectorizer/releases/tag/v0.1.1>
 - 配布物: `Hazakura Vectorizer_0.1.0_aarch64.dmg` (4.3 MB) / `Hazakura.Vectorizer.app.zip` (4.0 MB) / `SHA256SUMS.txt`
 - SHA-256 (DMG): `3f9655a633dcadcfd894cce5d2f2958819d6405a5816b170edab9a937ede90cd`
-- SHA-256 (app.zip): `71c03ec560d24698c609c36e5236f5025c87efe266ae36d17bfbe1918df49e86`
+- SHA-256 (app.zip): `c7b209f94ea23ab49b1f35bbdeac06804b7a9c97321a4d48f8716a97f49a0b5c`
+- チェックサム検証: `shasum -c SHA256SUMS.txt` (ファイル名のみ行に修正済み)
 - 署名: **adhoc 署名のみ**。Apple Developer ID での署名・公証は未実装。
   インストール後初回起動は右クリック→「開く」が必要 (詳細はリリースノート参照)。
 - vtracer バイナリは `.app` に Tauri `externalBin` として同梱。
+- アイコン: 桜 + V モチーフ (sage + sakura ブランドカラー)
+
+## 公開リリース (v0.1.0 — 初版 / 参照用)
+
+- リリース: <https://github.com/lero003/hazakura-vectorizer/releases/tag/v0.1.0>
+- 配布物: `Hazakura.Vectorizer_0.1.0_aarch64.dmg` (4.2 MB) / `Hazakura.Vectorizer.app.zip` (4.0 MB) / `SHA256SUMS.txt`
+- SHA-256 (DMG): `f64fcb1186e88d18261d8ab49bce58580b6fa9a56ede1ad624ee6544063c093b`
+- SHA-256 (app.zip): `2386b10c30b28a89cc1277083c9dd87eb76d838e7d1c78fdb10bd615bf8096e4`
+- このリリースは **初版** として残してあります。v0.1.1 以降の修正版がダウンロード推奨。
+- 旧い `SHA256SUMS.txt` には内部ビルドパス (`src-tauri/target/release/bundle/...`) が含まれていたため、検証コマンドはそのまま使えません。 `awk '{print $1, $2}' SHA256SUMS.txt` のような行抽出で使ってください。
 
 ## 製品レベル仕上げ (v0.1.0 で追加)
 
@@ -45,7 +56,7 @@ v0.1.0 公開済み。GitHub Release `v0.1.0` に DMG / `.app.zip` / `SHA256SUMS
 ## 起動方法
 
 ```bash
-cd /Users/keisetsu/Projects/hazakura-vectorizer
+cd hazakura-vectorizer
 npm install
 npm run tauri dev
 ```
@@ -146,5 +157,4 @@ npm run tauri dev
 ## 参考
 
 - 企画書: `hazakura-vectorizer-tauri-plan.md`
-- 実装計画: `~/.claude/plans/purrfect-waddling-plum.md`
 - デザイントークン参考: `hazakura-note/src/styles/{tokens,themes}.css` (ローカル)
