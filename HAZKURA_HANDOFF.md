@@ -147,4 +147,4 @@ npm run tauri dev
 
 - 企画書: `hazakura-vectorizer-tauri-plan.md`
 - 実装計画: `~/.claude/plans/purrfect-waddling-plum.md`
-- デザイントークン参考: `/Users/keisetsu/Projects/hazakura-note/src/styles/{tokens,themes}.css`
+- デザイントークン参考: `hazakura-note/src/styles/{tokens,themes}.css` (ローカル)
