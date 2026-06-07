@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `docs/RELEASING.md` — release runbook that documents the v0.1.0 / v0.1.1
+  checksum mismatch lessons and step-by-step instructions for cutting a
+  new version.
+- `scripts/verify-release.sh` — post-upload `shasum -a 256 -c` verifier
+  (authenticated `gh release download` + `od -c` filename sanity check).
+  Must be run **before** publishing any new release.
+
 ## [0.1.2] - 2026-06-08
 
 Patch release that fixes the v0.1.0 / v0.1.1 checksum mismatch and

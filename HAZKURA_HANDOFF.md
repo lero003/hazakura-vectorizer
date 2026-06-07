@@ -146,6 +146,7 @@ npm run tauri dev
 - **vtracer パラメータマッピング**: `src-tauri/src/cli/vtracer.rs` (VtracerOptions 構造体)
 - **CSP 変更**: `src-tauri/tauri.conf.json` の `csp` / `devCsp`
 - **デザイン変更**: `src/styles/tokens.css` (ライト) / `themes.css` の `[data-theme="dark"]`
+- **新しいバージョンをリリースするとき**: [`docs/RELEASING.md`](./docs/RELEASING.md) を順番に実行し、 **publish 前に必ず** `./scripts/verify-release.sh <tag>` を回す
 
 ## 触る必要がない場所
 
@@ -180,4 +181,6 @@ npm run tauri dev
 ## 参考
 
 - 企画書: `hazakura-vectorizer-tauri-plan.md`
+- リリース runbook: [`docs/RELEASING.md`](./docs/RELEASING.md) — 新しいバージョンを切る時の手順とハマりポイント
+- リリース検証スクリプト: [`scripts/verify-release.sh`](./scripts/verify-release.sh) — publish 前に必ず実行
 - デザイントークン参考: `hazakura-note/src/styles/{tokens,themes}.css` (ローカル)
