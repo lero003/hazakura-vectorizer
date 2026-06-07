@@ -30,7 +30,11 @@ function ToastItem({
   }, [toast.id, toast.kind, onDismiss]);
 
   return (
-    <div className={`toast is-${toast.kind}`} role="status">
+    <div
+      className={`toast is-${toast.kind}`}
+      role={toast.kind === "error" ? "alert" : "status"}
+      aria-live={toast.kind === "error" ? "assertive" : "polite"}
+    >
       <div className="toast-body">
         <div className="toast-text">{toast.text}</div>
         {toast.detail && <div className="toast-detail">{toast.detail}</div>}
@@ -39,7 +43,7 @@ function ToastItem({
         className="button-ghost"
         style={{ alignSelf: "flex-start", padding: "0 4px" }}
         onClick={() => onDismiss(toast.id)}
-        aria-label="dismiss"
+        aria-label="通知を閉じる"
       >
         ×
       </button>

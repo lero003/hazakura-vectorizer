@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & publish (macOS aarch64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Verify vtracer binary is committed
+        run: |
+          test -x src-tauri/binaries/vtracer-aarch64-apple-darwin \
+            || (echo "vtracer binary missing — see HAZKURA_HANDOFF.md" && exit 1)
+
+      - name: Build Tauri bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Build .app and .dmg, but do not sign / notarize (no Apple Developer
+          # ID configured for this repository). End users will see the
+          # Gatekeeper prompt; the release notes explain the right-click →
+          # Open workaround.
+          args: --bundles app,dmg
+
+      - name: Locate build artifacts
+        id: artifacts
+        run: |
+          set -euo pipefail
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n 1)
+          APP=$(ls -d src-tauri/target/release/bundle/macos/*.app | head -n 1)
+          APP_ZIP_DIR=$(dirname "$APP")
+          APP_ZIP="${APP}.zip"
+          echo "dmg=$DMG"   >> "$GITHUB_OUTPUT"
+          echo "app=$APP"   >> "$GITHUB_OUTPUT"
+          echo "app_zip=$APP_ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built DMG: $DMG"
+          echo "Built APP: $APP"
+
+      - name: Zip the .app for the release
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${{ steps.artifacts.outputs.app }}" \
+            "${{ steps.artifacts.outputs.app_zip }}"
+          ls -l "${{ steps.artifacts.outputs.app_zip }}"
+
+      - name: Compute SHA-256
+        run: |
+          shasum -a 256 "${{ steps.artifacts.outputs.dmg }}" \
+            | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+          shasum -a 256 "${{ steps.artifacts.outputs.app_zip }}" \
+            | tee -a "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.artifacts.outputs.dmg }}
+            ${{ steps.artifacts.outputs.app_zip }}
+            ${{ env.SHA_FILE }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          SHA_FILE: ${{ runner.temp }}/SHA256SUMS.txt

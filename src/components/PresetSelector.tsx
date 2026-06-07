@@ -9,12 +9,18 @@ interface PresetSelectorProps {
 export function PresetSelector({ value, onChange }: PresetSelectorProps) {
   return (
     <div className="settings-card">
-      <h3>プリセット</h3>
-      <div className="preset-grid">
+      <h3 id="preset-title">プリセット</h3>
+      <div
+        className="preset-grid"
+        role="radiogroup"
+        aria-labelledby="preset-title"
+      >
         {PRESETS.map((preset) => (
           <button
             key={preset.id}
             type="button"
+            role="radio"
+            aria-checked={value === preset.id}
             className={`preset-card ${value === preset.id ? "is-selected" : ""}`}
             onClick={() => onChange(preset.id)}
           >

@@ -54,6 +54,9 @@ import type {
 
 const THEME_STORAGE_KEY = "hazakura-vectorizer:theme";
 const CUTOUT_DEBOUNCE_MS = 150;
+const APP_VERSION = "0.1.0";
+const APP_REPOSITORY = "https://github.com/lero003/hazakura-vectorizer";
+const APP_LICENSE = "MIT";
 const MIN_BG_REQUIRED_MODES: ReadonlySet<BackgroundMode> = new Set([
   "auto",
   "remove-white",
@@ -113,6 +116,7 @@ function App() {
   const [isGeneratingPng, setIsGeneratingPng] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(() => {
     if (typeof window === "undefined") return "light";
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -134,7 +138,15 @@ function App() {
   }, [theme]);
 
   const pushToast = useCallback((toast: ToastMessage) => {
-    setToasts((current) => [...current, toast]);
+    setToasts((current) => {
+      // Suppress duplicates with the same text+kind within the last 3 toasts
+      // to avoid stacking the same message after rapid-fire actions.
+      const recent = current.slice(-3);
+      if (recent.some((t) => t.kind === toast.kind && t.text === toast.text)) {
+        return current;
+      }
+      return [...current, toast];
+    });
   }, []);
 
   const dismissToast = useCallback((id: string) => {
@@ -482,6 +494,14 @@ function App() {
     setTheme((t) => (t === "dark" ? "light" : "dark"));
   }, []);
 
+  const handleShowAbout = useCallback(() => {
+    setIsAboutOpen(true);
+  }, []);
+
+  const handleCloseAbout = useCallback(() => {
+    setIsAboutOpen(false);
+  }, []);
+
   const status = useMemo(() => {
     if (isVectorizing) {
       return { label: "Vectorizing…", working: true };
@@ -523,9 +543,17 @@ function App() {
         <div className="app-title">
           <span className="app-title-mark" aria-hidden />
           <span>Hazakura Vectorizer</span>
-          <small>v0.1 · local</small>
+          <small>v{APP_VERSION} · local</small>
         </div>
         <div className="app-header-actions">
+          <button
+            type="button"
+            className="button-ghost about-button"
+            onClick={handleShowAbout}
+            aria-label="このアプリについて"
+          >
+            About
+          </button>
           <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
         </div>
       </header>
@@ -547,6 +575,44 @@ function App() {
             onModeChange={setVectorizeMode}
             onTuningChange={setVectorizeTuning}
           />
+          <div className="convert-bar">
+            <div className="convert-bar-status">
+              <span
+                className={`app-status-dot ${
+                  isVectorizing || isGeneratingPng || isComputing ? "is-working" : ""
+                }`}
+                aria-hidden
+              />
+              <span>
+                {isVectorizing
+                  ? "Vectorizing…"
+                  : isGeneratingPng
+                  ? "Generating PNG…"
+                  : isComputing
+                  ? "Computing cutout…"
+                  : image
+                  ? "準備完了 — Convert を押してください"
+                  : "画像をドロップしてください"}
+              </span>
+            </div>
+            <button
+              className="button button-large"
+              disabled={
+                !image ||
+                isVectorizing ||
+                isGeneratingPng ||
+                isComputing
+              }
+              onClick={handleConvert}
+              aria-label="Convert to SVG and PNG variants"
+            >
+              {isVectorizing
+                ? "Vectorizing…"
+                : isGeneratingPng
+                ? "Generating PNG…"
+                : "Convert"}
+            </button>
+          </div>
         </aside>
 
         <section className="app-content">
@@ -614,7 +680,9 @@ function App() {
             >
               {vectorizeResult && (
                 <div
-                  style={{ width: "100%", height: "100%" }}
+                  className="svg-preview-host"
+                  role="img"
+                  aria-label={`ベクター化されたSVGプレビュー ${vectorizeResult.width}×${vectorizeResult.height}, ${vectorizeResult.pathCount} パス`}
                   dangerouslySetInnerHTML={{ __html: vectorizeResult.svg }}
                 />
               )}
@@ -622,33 +690,31 @@ function App() {
 
             <div className="preview-pane">
               <div className="preview-pane-header">
-                <strong>Vectorize</strong>
-                <span className="meta">{vectorizeMode}</span>
+                <strong>処理の流れ</strong>
+                <span className="meta">vtracer</span>
               </div>
               <div
                 className="preview-pane-body"
                 style={{ flexDirection: "column", gap: "var(--space-3)" }}
               >
-                <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
-                  白背景除去のあと、<strong>vtracer</strong> で SVG に変換します。
-                  PNG 派生も同時に生成されます。
-                </div>
-                <button
-                  className="button button-large button-block"
-                  disabled={
-                    !image ||
-                    isVectorizing ||
-                    isGeneratingPng ||
-                    isComputing
-                  }
-                  onClick={handleConvert}
-                >
-                  {isVectorizing
-                    ? "Vectorizing…"
-                    : isGeneratingPng
-                    ? "Generating PNG…"
-                    : "Convert"}
-                </button>
+                <ol className="flow-list">
+                  <li>
+                    <strong>背景処理</strong>
+                    <span>四隅から背景色を推定し、白を除去。</span>
+                  </li>
+                  <li>
+                    <strong>透過 PNG に変換</strong>
+                    <span>前処理済み画像を vtracer に渡します。</span>
+                  </li>
+                  <li>
+                    <strong>vtracer で SVG 化</strong>
+                    <span>カラーパスまたは 2 値パスを生成。</span>
+                  </li>
+                  <li>
+                    <strong>PNG 派生を書き出し</strong>
+                    <span>透過 / 白背景 / 512 / 1024px を生成。</span>
+                  </li>
+                </ol>
                 <div className="dim" style={{ fontSize: "var(--text-xs)" }}>
                   {image
                     ? `入力: ${image.file.name}`
@@ -679,6 +745,14 @@ function App() {
       </footer>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      {isAboutOpen && (
+        <AboutDialog
+          version={APP_VERSION}
+          repository={APP_REPOSITORY}
+          license={APP_LICENSE}
+          onClose={handleCloseAbout}
+        />
+      )}
     </div>
   );
 }
@@ -722,6 +796,91 @@ function CutoutPreview({ cutout }: { cutout: CutoutResult }) {
   }, [cutout]);
 
   return <canvas ref={ref} style={{ maxWidth: "100%", maxHeight: "100%" }} />;
+}
+
+function AboutDialog({
+  version,
+  repository,
+  license,
+  onClose,
+}: {
+  version: string;
+  repository: string;
+  license: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="about-title"
+      onClick={onClose}
+    >
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 id="about-title">Hazakura Vectorizer</h2>
+          <button
+            type="button"
+            className="button-ghost"
+            onClick={onClose}
+            aria-label="閉じる"
+          >
+            ×
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="modal-tagline">
+            ローカル完結の PNG / JPG / WebP → SVG ベクター化ツール。
+          </p>
+          <dl className="modal-meta">
+            <div>
+              <dt>バージョン</dt>
+              <dd>
+                <code>v{version}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>エンジン</dt>
+              <dd>
+                <code>vtracer</code> 同梱
+              </dd>
+            </div>
+            <div>
+              <dt>ライセンス</dt>
+              <dd>
+                <code>{license}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>ソース</dt>
+              <dd>
+                <a href={repository} target="_blank" rel="noreferrer">
+                  {repository}
+                </a>
+              </dd>
+            </div>
+          </dl>
+          <p className="modal-note">
+            画像は外部送信されません。すべての処理はこの Mac の中で完結します。
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="button" onClick={onClose}>
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default App;

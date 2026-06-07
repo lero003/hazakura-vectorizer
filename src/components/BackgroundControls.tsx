@@ -23,12 +23,18 @@ export function BackgroundControls({
   const removeWhiteActive = mode === "remove-white" || mode === "auto";
   return (
     <div className="settings-card">
-      <h3>背景処理</h3>
-      <div className="radio-group">
+      <h3 id="bg-controls-title">背景処理</h3>
+      <div
+        className="radio-group"
+        role="radiogroup"
+        aria-labelledby="bg-controls-title"
+      >
         {MODES.map((m) => (
           <button
             key={m.value}
             type="button"
+            role="radio"
+            aria-checked={mode === m.value}
             className={`radio-row ${mode === m.value ? "is-selected" : ""}`}
             onClick={() => onModeChange(m.value)}
           >
@@ -43,16 +49,26 @@ export function BackgroundControls({
 
       <div className="field">
         <div className="field-row">
-          <span className="field-label">White threshold</span>
-          <span className="field-value">{settings.whiteThreshold}</span>
+          <label
+            className="field-label"
+            htmlFor="bg-white-threshold"
+          >
+            White threshold
+          </label>
+          <span className="field-value" aria-hidden>
+            {settings.whiteThreshold}
+          </span>
         </div>
         <input
+          id="bg-white-threshold"
           type="range"
           min={0}
           max={120}
           step={1}
           value={settings.whiteThreshold}
           disabled={!removeWhiteActive}
+          aria-label="White threshold (0–120)"
+          aria-valuetext={`${settings.whiteThreshold} of 120`}
           onChange={(e) =>
             onSettingsChange({ ...settings, whiteThreshold: Number(e.currentTarget.value) })
           }
@@ -61,16 +77,26 @@ export function BackgroundControls({
 
       <div className="field">
         <div className="field-row">
-          <span className="field-label">Edge softness</span>
-          <span className="field-value">{settings.edgeSoftness}</span>
+          <label
+            className="field-label"
+            htmlFor="bg-edge-softness"
+          >
+            Edge softness
+          </label>
+          <span className="field-value" aria-hidden>
+            {settings.edgeSoftness}
+          </span>
         </div>
         <input
+          id="bg-edge-softness"
           type="range"
           min={0}
           max={64}
           step={1}
           value={settings.edgeSoftness}
           disabled={!removeWhiteActive}
+          aria-label="Edge softness (0–64)"
+          aria-valuetext={`${settings.edgeSoftness} of 64`}
           onChange={(e) =>
             onSettingsChange({ ...settings, edgeSoftness: Number(e.currentTarget.value) })
           }
@@ -79,6 +105,9 @@ export function BackgroundControls({
 
       <button
         type="button"
+        role="switch"
+        aria-checked={settings.removeFringe}
+        aria-label="Remove fringe (definge white halo)"
         className={`toggle ${settings.removeFringe ? "is-on" : ""}`}
         disabled={!removeWhiteActive}
         onClick={() =>
@@ -86,7 +115,7 @@ export function BackgroundControls({
         }
         style={removeWhiteActive ? undefined : { opacity: 0.4 }}
       >
-        <span className="toggle-track">
+        <span className="toggle-track" aria-hidden>
           <span className="toggle-knob" />
         </span>
         <span className="toggle-label">Remove fringe</span>

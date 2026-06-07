@@ -28,5 +28,14 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/WixTools/
 
+# Tauri icons we don't ship in the macOS bundle.
+# icon.png is kept as the canonical source; the .icns/.ico/PNG sizes listed
+# in tauri.conf.json (`bundle.icon`) are the only ones required at build time.
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
+src-tauri/icons/ios/
+src-tauri/icons/android/
+
 # App
 *.app
+*.dmg
