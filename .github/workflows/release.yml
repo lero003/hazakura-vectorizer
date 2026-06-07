@@ -67,12 +67,23 @@ jobs:
             "${{ steps.artifacts.outputs.app_zip }}"
           ls -l "${{ steps.artifacts.outputs.app_zip }}"
 
-      - name: Compute SHA-256
+      - name: Compute SHA-256 (basename-only, post-rename safe)
         run: |
-          shasum -a 256 "${{ steps.artifacts.outputs.dmg }}" \
+          set -euo pipefail
+          DMG_BASE=$(basename "${{ steps.artifacts.outputs.dmg }}")
+          APP_BASE=$(basename "${{ steps.artifacts.outputs.app_zip }}")
+          # `shasum` is run from the directory that contains the files
+          # so the manifest only references filenames.  GitHub Releases
+          # re-encodes spaces in the asset name to dots, so we mirror
+          # the same dot-encoded name in the manifest to keep
+          # `shasum -c` working without an interactive rename.
+          cd "$(dirname "${{ steps.artifacts.outputs.dmg }}")"
+          {
+            shasum -a 256 "$DMG_BASE"   | awk -v OFS='  ' '{print $1, $2}'
+            shasum -a 256 "$APP_BASE"   | awk -v OFS='  ' '{print $1, $2}'
+          } | sed -E 's/Hazakura Vectorizer\./Hazakura.Vectorizer./g' \
             | tee "$RUNNER_TEMP/SHA256SUMS.txt"
-          shasum -a 256 "${{ steps.artifacts.outputs.app_zip }}" \
-            | tee -a "$RUNNER_TEMP/SHA256SUMS.txt"
+          cat "$RUNNER_TEMP/SHA256SUMS.txt"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

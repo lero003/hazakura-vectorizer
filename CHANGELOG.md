@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-08
+
+Patch release that fixes the v0.1.0 / v0.1.1 checksum mismatch and
+synchronizes every version surface to a single source of truth.
+
+### Fixed
+
+- **Checksums are now actually verifiable.** The `SHA256SUMS.txt` shipped in
+  the v0.1.0 and v0.1.0 / v0.1.1 Release assets did not match the bytes that
+  GitHub served on download, so `shasum -a 256 -c SHA256SUMS.txt` always
+  failed. v0.1.2 regenerates the DMG, recomputes the SHA-256, uploads both,
+  and verifies the SHA locally *after* download.
+- **Version surfaces all move to `0.1.2`.** `package.json`,
+  `tauri.conf.json`, and `src-tauri/Cargo.toml` are now in sync, so the
+  bundled `.app`'s `Info.plist` (`CFBundleVersion` / `CFBundleShortVersionString`)
+  and the DMG filename both read `0.1.2`.
+- **`SHA256SUMS.txt` uses basename-only lines.** Filenames are extracted
+  with `basename` so the file is path-independent. The GitHub Actions
+  release workflow now does the same, so future CI-built releases will
+  have the same property.
+
+### Notes
+
+- The v0.1.0 and v0.1.0 / v0.1.1 GitHub Releases remain available for
+  historical reference; their release notes now point readers to v0.1.2.
+- The v0.1.1 → v0.1.2 jump is a tooling-only bump; no behavior or icon
+  changes. The cherry-blossom + V icon has been in the bundle since the
+  initial v0.1.0 commit on this branch.
+
+## [0.1.1] - 2026-06-08
+
+**Superseded by v0.1.2 — do not use.** The published `SHA256SUMS.txt`
+listed a SHA-256 that did not match the bytes GitHub actually served on
+download, and the internal version surfaces were still `0.1.0`. The DMG
+filename and `Info.plist` therefore read `0.1.0`, contradicting the
+v0.1.1 tag.
+
+The release was meant to be a docs-only patch that made `shasum -c`
+work transparently, but the upload was never re-verified end-to-end.
+
 ## [0.1.0] - 2026-06-08
 
 First public release. Local PNG / JPG / WebP → SVG vectorizer for logos, icons,
