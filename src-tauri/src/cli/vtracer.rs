@@ -3,6 +3,69 @@ use std::process::Command;
 
 use crate::error::{AppError, AppResult};
 
+const VTRACER_BIN: &str = "vtracer";
+
+/// Find the vtracer executable. Tries in this order:
+///   1. `VTRACER_BIN` env var override
+///   2. Bundled next to the running binary (Tauri externalBin)
+///   3. macOS app bundle `Contents/Resources/vtracer` (fallback for older bundle layouts)
+///   4. `which vtracer` (PATH lookup — for dev / global install)
+pub fn locate_vtracer() -> Result<PathBuf, AppError> {
+    if let Ok(p) = std::env::var("VTRACER_BIN") {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join(VTRACER_BIN);
+            if bundled.is_file() {
+                return Ok(bundled);
+            }
+
+            #[cfg(target_os = "macos")]
+            if let Some(contents) = dir.parent() {
+                let resources = contents.join("Resources").join(VTRACER_BIN);
+                if resources.is_file() {
+                    return Ok(resources);
+                }
+            }
+        }
+    }
+
+    which_vtracer()
+}
+
+fn which_vtracer() -> Result<PathBuf, AppError> {
+    let exts: Vec<&str> = if cfg!(windows) {
+        vec!["", ".exe"]
+    } else {
+        vec![""]
+    };
+    for ext in exts {
+        if let Ok(found) = search_path(VTRACER_BIN, ext) {
+            return Ok(found);
+        }
+    }
+    Err(AppError::VtracerNotFound)
+}
+
+fn search_path(name: &str, ext: &str) -> std::io::Result<PathBuf> {
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    for entry in std::env::split_paths(&path_var) {
+        let candidate = entry.join(format!("{name}{ext}"));
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("{name} not found in PATH"),
+    ))
+}
+
 #[derive(Debug, Clone)]
 pub struct VtracerOptions {
     pub colormode: Colormode,
@@ -57,7 +120,8 @@ impl Default for VtracerOptions {
 }
 
 pub fn vectorize(input_png: &Path, output_svg: &Path, opts: &VtracerOptions) -> AppResult<String> {
-    let mut cmd = Command::new("vtracer");
+    let vtracer_bin = locate_vtracer()?;
+    let mut cmd = Command::new(&vtracer_bin);
     cmd.arg("--input").arg(input_png);
     cmd.arg("--output").arg(output_svg);
     cmd.arg("--colormode").arg(opts.colormode.as_str());
@@ -113,9 +177,9 @@ pub fn extract_viewbox(svg: &str) -> Option<(u32, u32)> {
 
 #[allow(dead_code)]
 pub fn ensure_vtracer_available() -> AppResult<PathBuf> {
-    let mut cmd = Command::new("vtracer");
-    cmd.arg("--version");
-    let output = cmd
+    let bin = locate_vtracer()?;
+    let output = Command::new(&bin)
+        .arg("--version")
         .output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -127,5 +191,5 @@ pub fn ensure_vtracer_available() -> AppResult<PathBuf> {
     if !output.status.success() {
         return Err(AppError::VtracerFailed(String::from_utf8_lossy(&output.stderr).into_owned()));
     }
-    Ok(PathBuf::from("vtracer"))
+    Ok(bin)
 }

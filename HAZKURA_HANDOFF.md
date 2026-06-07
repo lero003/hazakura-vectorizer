@@ -27,6 +27,18 @@ npm install
 npm run tauri dev
 ```
 
+## 配布物
+
+- `.app`: `src-tauri/target/release/bundle/macos/Hazakura Vectorizer.app` (8.7M)
+- `.dmg`: `src-tauri/target/release/bundle/dmg/Hazakura Vectorizer_0.1.0_aarch64.dmg` (3.1M)
+- バイナリ単体: `src-tauri/target/release/hazakura-vectorizer` (8.6M)
+
+## リモート
+
+- GitHub: <https://github.com/lero003/hazakura-vectorizer> (private)
+- コミット: `8baf3ee Initial commit: Hazakura Vectorizer v0.1`
+- アップロードされたファイル: 66 ファイル / 11K 行。`node_modules` / `dist` / `src-tauri/target` / `*.app` / `*.dmg` / `.DS_Store` は除外済み。機密情報なし。
+
 ## 前提依存
 
 - Node 18+ / npm (Node 26 / npm 11.12 で検証)
