@@ -1,0 +1,114 @@
+/* === tokens.css ===
+ * Hazakura Vectorizer design tokens
+ * House style aligned with hazakura-note/src/styles/tokens.css
+ * (forest / sage theme), with small additions for this app:
+ *   - status colors (info / success / warning)
+ *   - shadow scale for elevated cards / panes
+ *   - radius + spacing scale
+ */
+
+:root {
+  /* Surface */
+  --bg: #f4f7f5;
+  --bg-rgb: 244, 247, 245;
+  --surface: #ffffff;
+  --surface-rgb: 255, 255, 255;
+  --surface-strong: #ffffff;
+  --surface-strong-rgb: 255, 255, 255;
+  --surface-muted: #ebf1ed;
+  --surface-deep: #e3ebe6;
+
+  /* Border */
+  --border: #dde6e1;
+  --border-strong: #c2cfc7;
+  --border-soft: #e8eeea;
+
+  /* Text */
+  --text: #1d2521;
+  --text-muted: #627267;
+  --text-faint: #8a9b91;
+  --text-inverse: #f0f7f3;
+
+  /* Accent (sage) */
+  --accent: #2e5c46;
+  --accent-rgb: 46, 92, 70;
+  --accent-hover: #244e3b;
+  --accent-soft: #e2ede6;
+  --accent-soft-rgb: 226, 237, 230;
+  --accent-glass: rgba(46, 92, 70, 0.08);
+
+  /* Hazakura (cherry blossom accent, used sparingly) */
+  --sakura: #d97a9c;
+  --sakura-soft: #fbe6ee;
+
+  /* Status */
+  --danger: #9e3f43;
+  --danger-soft: #f8e3e4;
+  --success: #2d6c4a;
+  --success-soft: #e2efe6;
+  --warning: #997838;
+  --warning-soft: #f7eed7;
+  --info: #2b567e;
+  --info-soft: #e0ebf3;
+
+  /* Effects */
+  --shadow-sm: 0 1px 2px rgba(20, 30, 25, 0.04);
+  --shadow-md: 0 4px 16px rgba(20, 30, 25, 0.06);
+  --shadow-lg: 0 12px 32px rgba(20, 30, 25, 0.08);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Typography */
+  --font-sans: "Inter", "Hiragino Sans", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue", "Yu Gothic UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-jp: "Hiragino Sans", "Yu Gothic UI", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", sans-serif;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
+  --line-tight: 1.25;
+  --line-normal: 1.5;
+  --line-relaxed: 1.7;
+
+  /* Motion */
+  --transition-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+  --transition: 200ms cubic-bezier(0.2, 0, 0, 1);
+  --transition-slow: 360ms cubic-bezier(0.2, 0, 0, 1);
+  --theme-transition: 200ms cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layout */
+  --layout-pad: 24px;
+  --layout-max-w: 1480px;
+  --header-h: 56px;
+  --status-h: 32px;
+  --sidebar-w: 320px;
+
+  /* Checkerboard (for transparent previews) */
+  --checker-1: #f1f4f2;
+  --checker-2: #dde4df;
+  --checker-size: 16px;
+}

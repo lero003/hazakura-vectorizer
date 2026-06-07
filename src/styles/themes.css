@@ -1,0 +1,82 @@
+/* === themes.css ===
+ * Light is the default (:root in tokens.css).
+ * Dark overrides are applied via [data-theme="dark"] on <html>.
+ */
+
+html {
+  transition:
+    background-color var(--theme-transition),
+    color var(--theme-transition);
+}
+
+html,
+body,
+#root,
+.app-shell,
+.app-header,
+.app-sidebar,
+.app-main,
+.app-status,
+.preview-pane,
+.settings-card,
+.drop-zone,
+.button,
+.button-secondary,
+.button-ghost,
+.toast,
+input,
+select,
+textarea {
+  transition:
+    background-color var(--theme-transition),
+    border-color var(--theme-transition),
+    color var(--theme-transition),
+    box-shadow var(--theme-transition);
+}
+
+/* === Dark: 森の夜 === */
+:root[data-theme="dark"] {
+  --bg: #0e1311;
+  --bg-rgb: 14, 19, 17;
+  --surface: #141a17;
+  --surface-rgb: 20, 26, 23;
+  --surface-strong: #1a211d;
+  --surface-strong-rgb: 26, 33, 29;
+  --surface-muted: #101613;
+  --surface-deep: #0a0e0c;
+
+  --border: #232c28;
+  --border-strong: #34423b;
+  --border-soft: #1c2420;
+
+  --text: #e8ede5;
+  --text-muted: #8a9b91;
+  --text-faint: #5a6a62;
+  --text-inverse: #1d2521;
+
+  --accent: #87cba8;
+  --accent-rgb: 135, 203, 168;
+  --accent-hover: #a0dab8;
+  --accent-soft: #1d2c25;
+  --accent-soft-rgb: 29, 44, 37;
+  --accent-glass: rgba(135, 203, 168, 0.12);
+
+  --sakura: #e3a3bc;
+  --sakura-soft: #2a1c22;
+
+  --danger: #d28589;
+  --danger-soft: #2c1c1d;
+  --success: #87cba8;
+  --success-soft: #1c2a23;
+  --warning: #d4ad6e;
+  --warning-soft: #2c2418;
+  --info: #8db8d9;
+  --info-soft: #18252f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  --checker-1: #161b18;
+  --checker-2: #232c28;
+}
