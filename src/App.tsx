@@ -23,6 +23,7 @@ import {
   validateImageFile,
 } from "./lib/imageLoad";
 import {
+  cutoutToPngBytes,
   generatePngVariants,
   type PngVariant,
 } from "./lib/pngExport";
@@ -350,8 +351,13 @@ function App() {
     setPngVariants([]);
     setVectorizeResult(null);
     try {
-      const bytes = new Uint8Array(await image.file.arrayBuffer());
-      const result = await vectorizeImage(bytes, {
+      // Vectorize the cutout PNG (transparent background) rather than the
+      // original image, so vtracer doesn't emit a full-canvas background
+      // path that later variants have to override.
+      const sourceBytes = cutoutResult
+        ? await cutoutToPngBytes(cutoutResult)
+        : new Uint8Array(await image.file.arrayBuffer());
+      const result = await vectorizeImage(sourceBytes, {
         mode: vectorizeMode,
         colorPrecision: vectorizeTuning.colorPrecision,
         cornerThreshold: vectorizeTuning.cornerThreshold,

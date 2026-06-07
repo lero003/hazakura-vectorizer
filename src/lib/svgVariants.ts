@@ -1,5 +1,13 @@
-const FILL_RE = /\sfill\s*=\s*"([^"]*)"/gi;
-const STROKE_RE = /\sstroke\s*=\s*"([^"]*)"/gi;
+// Use fresh regex instances per call to avoid the well-known
+// `lastIndex` mutation bug with the `g` flag. Module-level shared regex
+// objects would carry state across .test() / .replace() and silently
+// skip matches.
+const FILL_ATTR = "fill";
+const STROKE_ATTR = "stroke";
+
+function attrRegex(name: string): RegExp {
+  return new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, "gi");
+}
 
 function replaceAttr(
   svg: string,
@@ -12,12 +20,12 @@ function replaceAttr(
 }
 
 function fillAll(svg: string, color: string, mode: "override" | "current"): string {
-  let out = replaceAttr(svg, FILL_RE, (value) => {
+  let out = replaceAttr(svg, attrRegex(FILL_ATTR), (value) => {
     if (value === "none") return value;
     if (mode === "current") return value.startsWith("url(") ? value : "currentColor";
     return color;
   });
-  out = replaceAttr(out, STROKE_RE, (value) => {
+  out = replaceAttr(out, attrRegex(STROKE_ATTR), (value) => {
     if (value === "none") return value;
     if (mode === "current") return value.startsWith("url(") ? value : "currentColor";
     return color;
@@ -25,9 +33,14 @@ function fillAll(svg: string, color: string, mode: "override" | "current"): stri
   return out;
 }
 
+function hasAnyAttr(svg: string, name: string): boolean {
+  // Local regex — no lastIndex state to worry about.
+  return new RegExp(`\\s${name}\\s*=`, "i").test(svg);
+}
+
 export function blackVariant(svg: string): string {
   let out = fillAll(svg, "#000000", "override");
-  if (!FILL_RE.test(out) && !STROKE_RE.test(out)) {
+  if (!hasAnyAttr(out, FILL_ATTR) && !hasAnyAttr(out, STROKE_ATTR)) {
     out = out.replace("<svg", `<svg fill="#000000" stroke="#000000"`);
   }
   return out;
@@ -35,7 +48,7 @@ export function blackVariant(svg: string): string {
 
 export function whiteVariant(svg: string): string {
   let out = fillAll(svg, "#ffffff", "override");
-  if (!FILL_RE.test(out) && !STROKE_RE.test(out)) {
+  if (!hasAnyAttr(out, FILL_ATTR) && !hasAnyAttr(out, STROKE_ATTR)) {
     out = out.replace("<svg", `<svg fill="#ffffff" stroke="#ffffff"`);
   }
   return out;

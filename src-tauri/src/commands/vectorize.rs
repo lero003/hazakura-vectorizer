@@ -38,7 +38,8 @@ fn to_vtracer_options(opts: &VectorizeOptionsJson) -> AppResult<VtracerOptions> 
         color_precision: opts.color_precision.clamp(1, 8),
         corner_threshold: opts.corner_threshold.clamp(0, 180),
         filter_speckle: opts.filter_speckle.clamp(0, 128),
-        segment_length: opts.segment_length.max(0.5),
+        // vtracer requires segment_length in [3.5, 10]
+        segment_length: opts.segment_length.clamp(3.5, 10.0),
         splice_threshold: opts.splice_threshold.clamp(0, 180),
         mode: CurveMode::Spline,
     })

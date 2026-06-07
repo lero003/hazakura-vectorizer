@@ -51,12 +51,7 @@ npm run tauri dev
 
 **vtracer は .app に同梱済み** — 別途インストール不要。
 
-x86_64 (Intel Mac) 用にビルドする場合は:
-```bash
-# Intel Mac で vtracer をビルド
-cargo install vtracer --target x86_64-apple-darwin
-cp ~/.cargo/bin/vtracer src-tauri/binaries/vtracer-x86_64-apple-darwin
-```
+> Intel Mac はサポート外 (Tauri v2 + vtracer バイナリは aarch64 のみ)。
 
 ## 実装サマリ
 

@@ -160,3 +160,24 @@ async function renderWhite(image: {
 export async function blobToBytes(blob: Blob): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
+
+/**
+ * Convert a CutoutResult (potentially with bounding-box trim) to PNG bytes.
+ * Used for handing the cutout image to vtracer so the white background is
+ * not vectorized as a path.
+ */
+export async function cutoutToPngBytes(cutout: CutoutResult): Promise<Uint8Array> {
+  const trimmed = cutout.boundingBox
+    ? {
+        imageData: trim(cutout.imageData, cutout.boundingBox),
+        width: cutout.boundingBox.width,
+        height: cutout.boundingBox.height,
+      }
+    : {
+        imageData: cutout.imageData,
+        width: cutout.imageData.width,
+        height: cutout.imageData.height,
+      };
+  const blob = await renderTransparent(trimmed);
+  return blobToBytes(blob);
+}
