@@ -9,6 +9,13 @@ export interface PngVariant {
   height: number;
 }
 
+export class PngCancelledError extends Error {
+  constructor() {
+    super("png export cancelled");
+    this.name = "PngCancelledError";
+  }
+}
+
 export interface PngExportSpec {
   cutout: CutoutResult;
   baseName: string;
@@ -16,9 +23,24 @@ export interface PngExportSpec {
   includeTransparent: boolean;
   png512: boolean;
   png1024: boolean;
+  /** Optional progress callback. Fired after each variant is rendered with
+   *  a percentage in [0, 100]. Reports 100 when all variants are done. */
+  onProgress?: (percent: number) => void;
+  /** Optional cancellation check. Throws `PngCancelledError` when truthy. */
+  isCancelled?: () => boolean;
 }
 
 export async function generatePngVariants(spec: PngExportSpec): Promise<PngVariant[]> {
+  const cancelled = spec.isCancelled ?? (() => false);
+  const reportProgress = (percent: number) => {
+    if (spec.onProgress) {
+      spec.onProgress(Math.max(0, Math.min(100, percent)));
+    }
+  };
+  const checkCancel = () => {
+    if (cancelled()) throw new PngCancelledError();
+  };
+
   const out: PngVariant[] = [];
   const trimmed = spec.cutout.boundingBox
     ? {
@@ -32,56 +54,78 @@ export async function generatePngVariants(spec: PngExportSpec): Promise<PngVaria
         height: spec.cutout.imageData.height,
       };
 
+  // Plan the work so we can report granular progress without doing extra
+  // math per variant. We yield to the event loop between variants so the
+  // progress bar actually repaints and cancel checks are observed.
+  const steps: Array<{ label: string; run: () => Promise<PngVariant> }> = [];
   if (spec.includeTransparent) {
-    const blob = await renderTransparent(trimmed);
-    out.push({
-      key: "transparent",
-      label: "透過 PNG",
-      filenameSuffix: "transparent",
-      blob,
-      width: trimmed.width,
-      height: trimmed.height,
+    steps.push({
+      label: "transparent",
+      run: async () => ({
+        key: "transparent",
+        label: "透過 PNG",
+        filenameSuffix: "transparent",
+        blob: await renderTransparent(trimmed),
+        width: trimmed.width,
+        height: trimmed.height,
+      }),
     });
   }
-
   if (spec.includeWhiteBackground) {
-    const blob = await renderWhite(trimmed);
-    out.push({
-      key: "white",
-      label: "白背景 PNG",
-      filenameSuffix: "white",
-      blob,
-      width: trimmed.width,
-      height: trimmed.height,
+    steps.push({
+      label: "white",
+      run: async () => ({
+        key: "white",
+        label: "白背景 PNG",
+        filenameSuffix: "white",
+        blob: await renderWhite(trimmed),
+        width: trimmed.width,
+        height: trimmed.height,
+      }),
     });
   }
-
   if (spec.png512) {
-    const fitted = fitInside(trimmed, 512, 512);
-    const blob = await renderTransparent(fitted);
-    out.push({
-      key: "png-512",
-      label: "PNG 512px",
-      filenameSuffix: "512",
-      blob,
-      width: fitted.width,
-      height: fitted.height,
+    steps.push({
+      label: "png-512",
+      run: async () => {
+        const fitted = fitInside(trimmed, 512, 512);
+        return {
+          key: "png-512",
+          label: "PNG 512px",
+          filenameSuffix: "512",
+          blob: await renderTransparent(fitted),
+          width: fitted.width,
+          height: fitted.height,
+        };
+      },
     });
   }
-
   if (spec.png1024) {
-    const fitted = fitInside(trimmed, 1024, 1024);
-    const blob = await renderTransparent(fitted);
-    out.push({
-      key: "png-1024",
-      label: "PNG 1024px",
-      filenameSuffix: "1024",
-      blob,
-      width: fitted.width,
-      height: fitted.height,
+    steps.push({
+      label: "png-1024",
+      run: async () => {
+        const fitted = fitInside(trimmed, 1024, 1024);
+        return {
+          key: "png-1024",
+          label: "PNG 1024px",
+          filenameSuffix: "1024",
+          blob: await renderTransparent(fitted),
+          width: fitted.width,
+          height: fitted.height,
+        };
+      },
     });
   }
 
+  reportProgress(0);
+  for (let i = 0; i < steps.length; i++) {
+    checkCancel();
+    // Yield so React can paint progress + so a queued cancel can land.
+    await new Promise<void>((r) => setTimeout(r, 0));
+    const variant = await steps[i]!.run();
+    out.push(variant);
+    reportProgress(Math.round(((i + 1) / steps.length) * 100));
+  }
   return out;
 }
 

@@ -4,7 +4,7 @@
 
 .app-shell {
   display: grid;
-  grid-template-rows: var(--header-h) 1fr var(--status-h);
+  grid-template-rows: var(--header-h) 1fr;
   height: 100vh;
   background: var(--bg);
   color: var(--text);
@@ -79,44 +79,28 @@
   flex-direction: column;
   gap: var(--layout-pad);
 }
+/* ---------------- Settings card ---------------- */
 
-.app-status {
-  display: flex;
-  align-items: center;
-  padding: 0 var(--layout-pad);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  gap: var(--space-3);
-  user-select: none;
-}
-
-.app-status-dot {
+.convert-bar .app-status-dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
   background: var(--success);
   box-shadow: 0 0 0 3px var(--success-soft);
+  flex-shrink: 0;
 }
 
-.app-status-dot.is-working {
+.convert-bar .app-status-dot.is-working {
   background: var(--warning);
   box-shadow: 0 0 0 3px var(--warning-soft);
-  animation: pulse 1.4s ease-in-out infinite;
+  animation: convert-bar-dot-pulse 1.4s ease-in-out infinite;
 }
 
-.app-status-dot.is-error {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-soft);
-}
-
-@keyframes pulse {
+@keyframes convert-bar-dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
-/* ---------------- Settings card ---------------- */
 
 .settings-card {
   background: var(--surface);
@@ -387,6 +371,18 @@
   color: var(--accent);
 }
 
+.button-primary {
+  /* alias for .button, kept for semantic clarity when the action
+     is the page's main CTA (e.g. Save all formats). */
+  background: var(--accent);
+  color: var(--text-inverse);
+  border: 1px solid var(--accent);
+}
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 .button-ghost {
   background: transparent;
   color: var(--text-muted);
@@ -474,7 +470,10 @@
 
 .preview-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Three equal columns: Original | Cutout | SVG. SVG is the primary
+   * output so it gets a touch more breathing room by being the
+   * rightmost cell, but all three are visually equal here. */
+  grid-template-columns: 1fr 1fr 1.4fr;
   gap: var(--layout-pad);
 }
 
@@ -508,6 +507,13 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+.preview-pane-header-extra {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .preview-pane-body {
@@ -568,17 +574,150 @@
   align-items: center;
 }
 
-.export-bar-label {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-right: var(--space-2);
-}
-
 .export-bar-divider {
   width: 1px;
   height: 24px;
   background: var(--border);
   margin: 0 var(--space-1);
+}
+
+.export-bar-save-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  position: relative;
+}
+
+.export-bar-save-all-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.export-bar-save-all-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
+.export-bar-mode-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------------- Mode chip (Color / Monochrome switcher) ---------------- */
+
+.mode-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.mode-chip:hover:not(.is-active) {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.mode-chip.is-active {
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-color: var(--accent);
+}
+
+.mode-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------- Checkbox row (multi-select in VectorizeOptions) ---------------- */
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checkbox-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.checkbox-row:hover:not(.is-selected) {
+  border-color: var(--accent);
+}
+
+.checkbox-row.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.checkbox-row-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-inverse);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.checkbox-row.is-selected .checkbox-row-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-row-label {
+  font-weight: 500;
+}
+
+.checkbox-row-hint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
 }
 
 /* ---------------- Convert bar ---------------- */
@@ -606,51 +745,77 @@
   gap: var(--space-2);
 }
 
-.convert-bar .button-large { width: 100%; }
-
-/* ---------------- Flow list (in SVG preview pane) ---------------- */
-
-.flow-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  counter-reset: flow;
-  font-size: var(--text-sm);
+.convert-bar-status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.flow-list li {
-  display: grid;
-  grid-template-columns: 22px 1fr;
-  align-items: start;
-  gap: var(--space-2);
-  counter-increment: flow;
-  color: var(--text);
-}
-
-.flow-list li::before {
-  content: counter(flow);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
+.convert-bar-cancel {
+  /* Tighter padding than the default ghost button so it sits comfortably
+   * next to the status text without competing visually with the primary
+   * Convert button below. */
+  height: 26px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  font-family: var(--font-mono);
+  border-color: var(--border-strong);
+  color: var(--text-muted);
 }
 
-.flow-list li span {
-  grid-column: 2;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--line-normal);
+.convert-bar-cancel:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface);
 }
+
+.convert-bar-progress {
+  height: 4px;
+  background: var(--surface-muted);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  /* Slight inset so the bar doesn't visually fight the card border. */
+  margin: 0 calc(-1 * var(--space-1));
+}
+
+.convert-bar-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  /* width is set inline by React; transition keeps the bar smooth between
+   * chunk reports without burning a frame on every pixel update. */
+  transition: width 120ms ease-out;
+}
+
+.convert-bar-progress.is-indeterminate .convert-bar-progress-fill {
+  width: 35%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  animation: convert-bar-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes convert-bar-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .convert-bar-progress.is-indeterminate .convert-bar-progress-fill {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+.convert-bar .button-large { width: 100%; }
 
 .svg-preview-host {
   width: 100%;
@@ -664,7 +829,7 @@
 
 .toast-container {
   position: fixed;
-  bottom: calc(var(--status-h) + 16px);
+  bottom: 16px;
   right: 16px;
   display: flex;
   flex-direction: column;

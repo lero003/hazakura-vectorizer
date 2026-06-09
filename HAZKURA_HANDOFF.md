@@ -3,10 +3,20 @@
 ## 状態
 
 v0.1.0 / v0.1.1 / v0.1.2 公開済み。Latest は **v0.1.2** (version surfaces 同期 + チェックサムが `shasum -c` で実検証可能)。
+ソースツリーは **v0.2.0 release candidate** に更新中 (Multi-mode vectorize / 全形式一括書き出し / Cancel + 進捗バー)。
 リポジトリは public (<https://github.com/lero003/hazakura-vectorizer>)。
 
 `cargo check` / `npx tsc --noEmit` / `npm run build` / `npm run tauri build` すべて通過。
 実 GUI での E2E スモークは未実施 (CI / ローカルから実行しただけ)。
+
+**v0.2.0 候補 (未タグ / 未公開)** に以下を追加済み:
+- **Multi-mode vectorize** — Color / Monochrome の同時生成。`vectorize_image_multi` Tauri コマンドで並列実行。
+- **「全形式を書き出す」** ボタン — フォルダ選択 1 回で SVG 3 種類 (× モード数) + PNG 4 種類を一括保存。`save_bundle_to_folder` Tauri コマンドで実装。
+- **Cancel + 進捗バー** — cutout / PNG 生成を中断可能にし、convert bar に確定 / indeterminate progress を表示。
+- **APP_VERSION の単一参照化** — Vite `define` で `__APP_VERSION__` を注入。`v0.1.0 · local` ハードコードを撲滅。
+- **Multi-mode 個別 SVG 保存修正** — Export bar の各 mode ボタンが、プレビュー中の active mode ではなくクリックされた mode の結果を保存するよう修正。
+
+詳細は `CHANGELOG.md` の `[0.2.0]` セクション、および本ノートの「ワークフロー追加」テーブル。
 
 ## 公開リリース (v0.1.2 — Latest)
 
@@ -55,8 +65,22 @@ v0.1.0 / v0.1.1 / v0.1.2 公開済み。Latest は **v0.1.2** (version surfaces 
 | version surfaces 同期 | `package.json` / `tauri.conf.json` / `Cargo.toml` を `0.1.2` に。 Info.plist の `CFBundleVersion` も `0.1.2` に同期 → DMG ファイル名が `Hazakura Vectorizer_0.1.2_aarch64.dmg` に |
 | SHA256SUMS.txt | `basename` でファイル名のみ取り、 ダウンロード後の実ファイル名と一致するよう GitHub ダウンロード後のピリオド版 (例: `Hazakura.Vectorizer_0.1.2_aarch64.dmg`) で記述 |
 | 検証プロセス | upload 後に Releases からファイルをダウンロード ( `gh release download` ) して `shasum -a 256 -c SHA256SUMS.txt` を実行、 両方 OK を確認するまで publish としない |
-| release.yml | CI 経由の release workflow も `basename` 化 (SHA 計算時にファイル名のみ取り、 アップロード後の CD パイプラインにそのまま渡せるように) |
+| release.yml | CI 経由の release workflow も `basename` 化し、GitHub のスペース→ピリオド変換に合わせた `SHA256SUMS.txt` を生成。タグ push 後は draft Release に止め、`scripts/verify-release.sh` で remote checksum を確認してから publish |
 | v0.1.0 / v0.1.1 リリース | それぞれ本文冒頭に deprecation 案内を追記。 タグと Release ページは不変で残置 |
+
+## v0.2.0 候補 (ワークフロー追加 / バックエンド新コマンド)
+
+| 領域 | 変更点 |
+|---|---|
+| Multi-mode vectorize | `vectorize_image_multi` コマンド追加。`Vec<{key, options}>` を受け取り、`spawn_blocking` で vtracer を並列起動。JS 側は `Map<VectorizeMode, VectorizeResult>` で保持。 `vectorize_image` (単一) は後方互換のため残置 |
+| 一括保存 | `save_bundle_to_folder` コマンド追加。フォルダピッカーを Rust 側 (`dialog().file().blocking_pick_folder`) で起動し、`Vec<{filename, base64}>` をまとめて書き出し。`sanitize_basename` + `ensure_within` で path traversal 対策 |
+| キャンセル + 進捗 | `cancelTokensRef: Set<{cancelled: boolean}>` を導入し、cutout effect と handleConvert がそれぞれトークンを取得。`handleCancel` が全トークンを flip して in-flight な全操作を停止。`applyCutoutAsync` / `generatePngVariants` は chunk ごとに `isCancelled` チェックと `onProgress` コールバック。`convert-bar` に 4px のプログレスバー (確定 / indeterminate) と「✕ キャンセル」ボタン。 vtracer は v0.2 では non-cancellable (kill 配管が独立) |
+| APP_VERSION 単一参照 | `vite.config.ts` の `define` で `__APP_VERSION__` を `package.json` の `version` から注入。`src/App.tsx` の `APP_VERSION = __APP_VERSION__` で参照。`src/vite-env.d.ts` に ambient 宣言 |
+| 書き出しバー | 「全形式を書き出す」 primary ボタン (ファイル数表示付き) + モードごとの SVG グループ (Color / Monochrome タグ付き) |
+| ベクター化オプション | radio → checkbox マルチセレクト。 Color / Monochrome / 両方を選べる |
+| SVG プレビュー | プレビューヘッダに Color / Monochrome chip switcher (`role="tablist"`) |
+| 状態管理 | `vectorizeMode` 単一 → `vectorizeModes: VectorizeModeSet` + `activeMode` 派生。preset トグル、Convert、ファイルロードに応じて結果を prune する effect あり |
+| 個別 SVG 保存 | Export bar の mode group から `mode` と `kind` を App へ渡す。Multi-mode でも押したボタンどおりの SVG を保存 |
 
 ## 安定性修正サマリ (v0.1.1 で導入済み)
 
@@ -160,19 +184,19 @@ npm run tauri dev
 - 画像 D&D は **Tauri の `onDragDropEvent` を使う** (HTML5 イベントは webview が consume)
 - 16MP 以上の画像で cutout が重くなる場合あり。`CHUNK_PIXELS` を下げるか Web Worker 化を検討
 - `OffscreenCanvas` を使っているので Safari < 16.4 では動かない。Tauri (WebKit) は基本 OK
-- **macOS リリースは adhoc 署名のみ**。Gatekeeper の警告が出るので、初回起動は右クリック→「開く」を案内する。Developer ID での署名・公証は v0.2 で計画
+- **macOS リリースは adhoc 署名のみ**。Gatekeeper の警告が出るので、初回起動は右クリック→「開く」を案内する。Developer ID での署名・公証は v0.3 以降で検討
 - **GitHub Releases の asset 名でスペースがピリオドに置換される** (例: `Hazakura Vectorizer_0.1.2_aarch64.dmg` → `Hazakura.Vectorizer_0.1.2_aarch64.dmg`)。 v0.1.2 の `SHA256SUMS.txt` はダウンロード後のピリオド版で記述しているので、 ブラウザで 3 ファイルをダウンロードして `shasum -c` するとそのまま検証 OK
 - **v0.1.0 / v0.1.1 の `SHA256SUMS.txt` は `shasum -c` で検証できない** (v0.1.0 は内部パス入り、v0.1.1 は Release ダウンロード後のファイル名と SHA が不一致)。ダウンロードと検証は v0.1.2 を使用すること
 - **Release upload 後の検証を必ずやること**: ローカルで計算した SHA と Releases からダウンロードしたファイルの SHA が一致することを publish 前に確認する。 さもないと今回のような SHA mismatch を生む
 
-## 想定外 / TODO (v0.2 以降)
+## 想定外 / TODO (v0.3 以降)
 
 - Apple Developer ID でのコード署名 + 公証
 - スポイト指定の背景色
 - 黒背景除去モード
 - PDF 出力
 - 複数ファイル一括変換
-- 進捗バー (現状は "computing…" テキストのみ)
+- vtracer キャンセル (v0.2.0 時点では separate OS process のため non-cancellable)
 - cutout の Web Worker 化 (現状は main thread + chunked。超巨大画像で重い)
 - Intel Mac / Windows / Linux ビルド
 - favicon セット / Apple Icon Set 自動生成

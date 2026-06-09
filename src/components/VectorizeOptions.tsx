@@ -1,49 +1,80 @@
-import type { VectorizeMode, VectorizeTuning } from "../lib/types";
+import type {
+  VectorizeMode,
+  VectorizeModeSet,
+  VectorizeTuning,
+} from "../lib/types";
 
 interface VectorizeOptionsProps {
-  mode: VectorizeMode;
+  modes: VectorizeModeSet;
+  /** Active mode used by the SVG preview and the single-file Save buttons.
+   * Always one of `modes`. Required because preview/export UI needs a
+   * "currently focused" mode even when multiple are produced. */
+  activeMode: VectorizeMode;
   tuning: VectorizeTuning;
-  onModeChange: (mode: VectorizeMode) => void;
+  onModesChange: (modes: VectorizeModeSet) => void;
   onTuningChange: (tuning: VectorizeTuning) => void;
 }
 
+const MODE_DEFS: { value: VectorizeMode; label: string; hint: string }[] = [
+  { value: "color", label: "Color", hint: "vtracer color" },
+  { value: "bw", label: "Monochrome", hint: "vtracer bw" },
+];
+
+function toggleMode(
+  modes: VectorizeModeSet,
+  target: VectorizeMode,
+): VectorizeModeSet {
+  if (modes.includes(target)) {
+    if (modes.length === 1) return modes; // never empty
+    return modes.filter((m) => m !== target);
+  }
+  // Always keep a stable order: color first, then bw.
+  const next = new Set(modes);
+  next.add(target);
+  return (["color", "bw"] as VectorizeMode[]).filter((m) => next.has(m));
+}
+
 export function VectorizeOptions({
-  mode,
+  modes,
   tuning,
-  onModeChange,
+  onModesChange,
   onTuningChange,
 }: VectorizeOptionsProps) {
+  const isMulti = modes.length > 1;
   return (
     <div className="settings-card">
       <h3 id="vec-opts-title">ベクター化オプション</h3>
       <div
-        className="radio-group"
-        role="radiogroup"
+        className="checkbox-group"
+        role="group"
         aria-labelledby="vec-opts-title"
       >
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "color"}
-          className={`radio-row ${mode === "color" ? "is-selected" : ""}`}
-          onClick={() => onModeChange("color")}
-        >
-          <span className="radio-row-dot" aria-hidden />
-          <span className="radio-row-label">Color</span>
-          <span className="radio-row-hint">vtracer color</span>
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "bw"}
-          className={`radio-row ${mode === "bw" ? "is-selected" : ""}`}
-          onClick={() => onModeChange("bw")}
-        >
-          <span className="radio-row-dot" aria-hidden />
-          <span className="radio-row-label">Monochrome</span>
-          <span className="radio-row-hint">vtracer bw</span>
-        </button>
+        {MODE_DEFS.map((m) => {
+          const checked = modes.includes(m.value);
+          return (
+            <button
+              key={m.value}
+              type="button"
+              role="checkbox"
+              aria-checked={checked}
+              className={`checkbox-row ${checked ? "is-selected" : ""}`}
+              onClick={() => onModesChange(toggleMode(modes, m.value))}
+            >
+              <span className="checkbox-row-box" aria-hidden>
+                {checked ? "✓" : ""}
+              </span>
+              <span className="checkbox-row-label">{m.label}</span>
+              <span className="checkbox-row-hint">{m.hint}</span>
+            </button>
+          );
+        })}
       </div>
+      {isMulti && (
+        <p className="dim" style={{ fontSize: "var(--text-xs)", margin: 0 }}>
+          Convert 1 回で {modes.length} 形式を並列生成します。プレビューと
+          書き出しは下の「表示」切替で選べます。
+        </p>
+      )}
 
       <div className="section-divider" />
 

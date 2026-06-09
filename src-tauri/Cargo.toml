@@ -1,6 +1,6 @@
 [package]
 name = "hazakura-vectorizer"
-version = "0.1.2"
+version = "0.2.0"
 description = "Local Tauri app for turning raster logos into reusable SVG/PNG assets"
 authors = ["Hazakura <https://github.com/lero003/hazakura-vectorizer>"]
 license = "MIT"

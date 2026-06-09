@@ -158,6 +158,10 @@ export interface ApplyCutoutOptions {
   background: [number, number, number] | null;
   settings: CutoutSettings;
   isCancelled?: () => boolean;
+  /** Optional progress callback. Fired at the start of each chunk with a
+   *  percentage in [0, 100]. For the early-return paths (keep-transparent /
+   *  white-background / no-background), it fires once with 100. */
+  onProgress?: (percent: number) => void;
 }
 
 export async function applyCutoutAsync({
@@ -165,10 +169,14 @@ export async function applyCutoutAsync({
   background,
   settings,
   isCancelled,
+  onProgress,
 }: ApplyCutoutOptions): Promise<CutoutResult> {
   const cancelled = isCancelled ?? (() => false);
   const checkCancel = () => {
     if (cancelled()) throw new CutoutCancelledError();
+  };
+  const reportProgress = (percent: number) => {
+    if (onProgress) onProgress(Math.max(0, Math.min(100, percent)));
   };
 
   const w = bitmap.width;
@@ -186,6 +194,7 @@ export async function applyCutoutAsync({
   if (effectiveMode === "keep-transparent") {
     checkCancel();
     const bbox = findBoundingBox(data, w, h);
+    reportProgress(100);
     return { imageData, boundingBox: bbox };
   }
 
@@ -196,12 +205,14 @@ export async function applyCutoutAsync({
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = "source-over";
     const filled = ctx.getImageData(0, 0, w, h);
+    reportProgress(100);
     return { imageData: filled, boundingBox: null };
   }
 
   if (!background) {
     checkCancel();
     const bbox = findBoundingBox(data, w, h);
+    reportProgress(100);
     return { imageData, boundingBox: bbox };
   }
 
@@ -216,6 +227,10 @@ export async function applyCutoutAsync({
       checkCancel();
       await new Promise<void>((r) => setTimeout(r, 0));
     }
+    // Reserve the last 10% of the bar for the post-processing steps below
+    // (fringe removal + bbox scan). The chunked scan itself is the bulk
+    // of the work, so we map it to 0-90%.
+    reportProgress(Math.floor((chunkStart / totalPixels) * 90));
     const chunkEnd = Math.min(chunkStart + CHUNK_PIXELS, totalPixels);
     for (let p = chunkStart; p < chunkEnd; p++) {
       const i = p * 4;
@@ -239,10 +254,13 @@ export async function applyCutoutAsync({
 
   if (settings.removeFringe) {
     checkCancel();
+    reportProgress(92);
     defringe(data, background, threshold, softRange);
   }
 
   checkCancel();
+  reportProgress(96);
   const bbox = findBoundingBox(data, w, h);
+  reportProgress(100);
   return { imageData, boundingBox: bbox };
 }

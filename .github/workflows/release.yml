@@ -81,7 +81,7 @@ jobs:
           {
             shasum -a 256 "$DMG_BASE"   | awk -v OFS='  ' '{print $1, $2}'
             shasum -a 256 "$APP_BASE"   | awk -v OFS='  ' '{print $1, $2}'
-          } | sed -E 's/Hazakura Vectorizer\./Hazakura.Vectorizer./g' \
+          } | sed -E 's/Hazakura Vectorizer/Hazakura.Vectorizer/g' \
             | tee "$RUNNER_TEMP/SHA256SUMS.txt"
           cat "$RUNNER_TEMP/SHA256SUMS.txt"
 
@@ -91,9 +91,7 @@ jobs:
           files: |
             ${{ steps.artifacts.outputs.dmg }}
             ${{ steps.artifacts.outputs.app_zip }}
-            ${{ env.SHA_FILE }}
+            ${{ runner.temp }}/SHA256SUMS.txt
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: false
-        env:
-          SHA_FILE: ${{ runner.temp }}/SHA256SUMS.txt

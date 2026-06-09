@@ -25,6 +25,7 @@ import {
 import {
   cutoutToPngBytes,
   generatePngVariants,
+  PngCancelledError,
   type PngVariant,
 } from "./lib/pngExport";
 import {
@@ -37,8 +38,11 @@ import { findPreset } from "./lib/presets";
 import {
   bytesToBase64,
   readImageFile,
+  saveBundleToFolder,
   saveDialogAndWrite,
   vectorizeImage,
+  vectorizeImageMulti,
+  type BundleFile,
 } from "./lib/tauriInvoke";
 import type {
   BackgroundMode,
@@ -48,13 +52,15 @@ import type {
   ThemeName,
   ToastKind,
   ToastMessage,
+  VectorizeMode,
+  VectorizeModeSet,
   VectorizeResult,
   VectorizeTuning,
 } from "./lib/types";
 
 const THEME_STORAGE_KEY = "hazakura-vectorizer:theme";
 const CUTOUT_DEBOUNCE_MS = 150;
-const APP_VERSION = "0.1.0";
+const APP_VERSION = __APP_VERSION__;
 const APP_REPOSITORY = "https://github.com/lero003/hazakura-vectorizer";
 const APP_LICENSE = "MIT";
 const MIN_BG_REQUIRED_MODES: ReadonlySet<BackgroundMode> = new Set([
@@ -104,16 +110,24 @@ function App() {
     useState<CutoutSettings>(initialCutout);
   const [vectorizeTuning, setVectorizeTuning] =
     useState<VectorizeTuning>(initialTuning);
-  const [vectorizeMode, setVectorizeMode] = useState<"color" | "bw">(
+  const [vectorizeModes, setVectorizeModes] = useState<VectorizeModeSet>([
+    initialPreset.mode,
+  ]);
+  const [activeMode, setActiveMode] = useState<VectorizeMode>(
     initialPreset.mode,
   );
   const [cutoutResult, setCutoutResult] = useState<CutoutResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
-  const [vectorizeResult, setVectorizeResult] =
-    useState<VectorizeResult | null>(null);
+  /** 0–100 while a cutout chunk is being processed; null when idle. */
+  const [cutoutProgress, setCutoutProgress] = useState<number | null>(null);
+  const [vectorizeResults, setVectorizeResults] = useState<
+    Map<VectorizeMode, VectorizeResult>
+  >(() => new Map());
   const [pngVariants, setPngVariants] = useState<PngVariant[]>([]);
   const [isVectorizing, setIsVectorizing] = useState(false);
   const [isGeneratingPng, setIsGeneratingPng] = useState(false);
+  /** 0–100 while a PNG variant is being generated; null when idle. */
+  const [pngProgress, setPngProgress] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
@@ -131,6 +145,39 @@ function App() {
     key: string;
     result: CutoutResult;
   } | null>(null);
+
+  /**
+   * Set of cancel tokens, one per in-flight cancellable operation. The
+   * cutout effect and `handleConvert` each allocate their own token on
+   * entry and remove it on exit. `handleCancel` flips every active token
+   * so a user click during a concurrent run (e.g. cutout re-running
+   * because the user dragged a slider mid-Convert) stops everything.
+   */
+  const cancelTokensRef = useRef<Set<{ cancelled: boolean }>>(new Set());
+
+  // Active mode is the mode currently shown in the SVG preview pane and
+  // targeted by the single-file Save buttons. It must always be a member of
+  // `vectorizeModes`; this effect repairs the invariant after a mode toggle.
+  useEffect(() => {
+    if (!vectorizeModes.includes(activeMode) && vectorizeModes.length > 0) {
+      setActiveMode(vectorizeModes[0]!);
+    }
+  }, [vectorizeModes, activeMode]);
+
+  // Toggling the mode set invalidates the previous Convert result map —
+  // any result whose key is no longer in the set is dropped. We don't
+  // auto-re-run Convert; the user re-clicks it explicitly.
+  useEffect(() => {
+    setVectorizeResults((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map<VectorizeMode, VectorizeResult>();
+      for (const mode of vectorizeModes) {
+        const r = prev.get(mode);
+        if (r) next.set(mode, r);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [vectorizeModes]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -173,7 +220,7 @@ function App() {
           if (prev) disposeImage(prev);
           return next;
         });
-        setVectorizeResult(null);
+        setVectorizeResults(new Map());
         setPngVariants([]);
         setBackground(null);
         setCutoutResult(null);
@@ -266,7 +313,11 @@ function App() {
       segmentLength: p.segmentLength,
       spliceThreshold: p.spliceThreshold,
     });
-    setVectorizeMode(p.mode);
+    // Preset selection resets modes to the preset's primary mode only;
+    // if the user has manually expanded to multi-mode, the next Convert
+    // will respect whatever is currently checked. The mode-cleanup effect
+    // below prunes the results map to whatever survives the new mode set.
+    setVectorizeModes([p.mode]);
   }, []);
 
   // Background estimation effect — runs once per image, stores in separate state
@@ -317,23 +368,47 @@ function App() {
       return;
     }
 
+    // Each fresh effect run allocates its own cancel token. We capture it
+    // in a local `token` so this closure is independent of the next
+    // effect's token; the shared `cancelTokensRef` is the bus that
+    // `handleCancel` walks to flip *every* live token. We also bump the
+    // per-effect `jobId`; `isCancelled` returns true when either the
+    // user cancelled (token) or this effect was superseded (jobId).
+    const token = { cancelled: false };
+    cancelTokensRef.current.add(token);
     const jobId = ++cutoutJobRef.current;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       if (cancelled || cutoutJobRef.current !== jobId) return;
+      // Honor a Cancel that landed during the 150ms debounce. The cancel
+      // button itself is hidden in this window (nothing is "processing"
+      // yet) but a fast user with a mouse-down on Cancel right after a
+      // slider drag would otherwise still see the cutout spin up and
+      // throw 200ms later. Checking here short-circuits the work.
+      if (token.cancelled) return;
       setIsComputing(true);
+      setCutoutProgress(0);
       try {
         const result = await applyCutoutAsync({
           bitmap: image.bitmap,
           background,
           settings: cutoutSettings,
-          isCancelled: () => cutoutJobRef.current !== jobId,
+          isCancelled: () => token.cancelled || cutoutJobRef.current !== jobId,
+          onProgress: (percent) => {
+            if (!token.cancelled && cutoutJobRef.current === jobId) {
+              setCutoutProgress(percent);
+            }
+          },
         });
         if (cancelled || cutoutJobRef.current !== jobId) return;
         cutoutCacheRef.current = { key: cacheKey, result };
         setCutoutResult(result);
       } catch (err) {
-        if (err instanceof CutoutCancelledError) return;
+        if (err instanceof CutoutCancelledError) {
+          // Expected when the user clicks Cancel or a fresh effect supersedes
+          // us. Either way, do not surface an error toast.
+          return;
+        }
         if (cancelled || cutoutJobRef.current !== jobId) return;
         handleError(
           "背景処理でエラー",
@@ -342,6 +417,7 @@ function App() {
       } finally {
         if (cutoutJobRef.current === jobId) {
           setIsComputing(false);
+          setCutoutProgress(null);
         }
       }
     }, CUTOUT_DEBOUNCE_MS);
@@ -349,6 +425,15 @@ function App() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      cancelTokensRef.current.delete(token);
+      // If this effect is being torn down mid-computation (slider move,
+      // new image, unmount), make sure we don't leave isComputing stuck
+      // on. The `jobId` check guards against a delayed cleanup racing a
+      // fresh effect that already took over.
+      if (cutoutJobRef.current === jobId) {
+        setIsComputing(false);
+        setCutoutProgress(null);
+      }
     };
   }, [image, cutoutSettings, background, handleError]);
 
@@ -359,9 +444,14 @@ function App() {
 
   const handleConvert = useCallback(async () => {
     if (!image) return;
+    // Our own token. A concurrent cutout effect re-run (user dragging a
+    // slider while Convert is generating PNG) won't disturb us because
+    // we read `token.cancelled` directly, not the shared ref.
+    const token = { cancelled: false };
+    cancelTokensRef.current.add(token);
     setIsVectorizing(true);
     setPngVariants([]);
-    setVectorizeResult(null);
+    setVectorizeResults(new Map());
     try {
       // Vectorize the cutout PNG (transparent background) rather than the
       // original image, so vtracer doesn't emit a full-canvas background
@@ -369,28 +459,65 @@ function App() {
       const sourceBytes = cutoutResult
         ? await cutoutToPngBytes(cutoutResult)
         : new Uint8Array(await image.file.arrayBuffer());
-      const result = await vectorizeImage(sourceBytes, {
-        mode: vectorizeMode,
+
+      const tuning = {
         colorPrecision: vectorizeTuning.colorPrecision,
         cornerThreshold: vectorizeTuning.cornerThreshold,
         filterSpeckle: vectorizeTuning.filterSpeckle,
         segmentLength: vectorizeTuning.segmentLength,
         spliceThreshold: vectorizeTuning.spliceThreshold,
-      });
-      setVectorizeResult({
-        ...result,
-        svg: ensureViewBox(stripMetadata(result.svg)),
-      });
+      };
+
+      const nextResults = new Map<VectorizeMode, VectorizeResult>();
+      if (vectorizeModes.length === 1) {
+        const mode = vectorizeModes[0]!;
+        const raw = await vectorizeImage(sourceBytes, { mode, ...tuning });
+        nextResults.set(mode, {
+          ...raw,
+          svg: ensureViewBox(stripMetadata(raw.svg)),
+        });
+      } else {
+        const raw = await vectorizeImageMulti(
+          sourceBytes,
+          vectorizeModes.map((mode) => ({ key: mode, options: { mode, ...tuning } })),
+        );
+        for (const entry of raw) {
+          const mode = entry.key as VectorizeMode;
+          if (!vectorizeModes.includes(mode)) continue;
+          nextResults.set(mode, {
+            svg: ensureViewBox(stripMetadata(entry.svg)),
+            width: entry.width,
+            height: entry.height,
+            pathCount: entry.pathCount,
+          });
+        }
+      }
+      setVectorizeResults(nextResults);
+      // Make sure the preview focuses on a mode that actually has a result.
+      if (!nextResults.has(activeMode) && nextResults.size > 0) {
+        const firstMode = vectorizeModes.find((m) => nextResults.has(m));
+        if (firstMode) setActiveMode(firstMode);
+      }
+
+      const totalPaths = Array.from(nextResults.values()).reduce(
+        (acc, r) => acc + r.pathCount,
+        0,
+      );
       pushToast(
         makeToast(
           "success",
-          "SVG 変換完了",
-          `${result.pathCount} paths / ${result.width}×${result.height}`,
+          vectorizeModes.length > 1
+            ? `SVG 変換完了 (${vectorizeModes.length} 形式)`
+            : "SVG 変換完了",
+          `${totalPaths} paths / ${nextResults.values().next().value?.width ?? 0}×${
+            nextResults.values().next().value?.height ?? 0
+          }`,
         ),
       );
 
       if (cutoutResult) {
         setIsGeneratingPng(true);
+        setPngProgress(0);
         try {
           const variants = await generatePngVariants({
             cutout: cutoutResult,
@@ -399,31 +526,50 @@ function App() {
             includeWhiteBackground: true,
             png512: true,
             png1024: true,
+            isCancelled: () => token.cancelled,
+            onProgress: (percent) => {
+              if (!token.cancelled) {
+                setPngProgress(percent);
+              }
+            },
           });
           setPngVariants(variants);
           pushToast(makeToast("success", "PNG 派生を生成しました"));
         } catch (err) {
+          if (err instanceof PngCancelledError) {
+            // User cancelled PNG gen. SVG result is still valid; just
+            // inform without the error toast styling.
+            pushToast(makeToast("info", "PNG 派生生成をキャンセルしました"));
+            return;
+          }
           handleError(
             "PNG 派生生成に失敗",
             err instanceof Error ? err.message : String(err),
           );
         } finally {
           setIsGeneratingPng(false);
+          setPngProgress(null);
         }
       }
     } catch (err) {
+      if (err instanceof PngCancelledError) {
+        pushToast(makeToast("info", "処理をキャンセルしました"));
+        return;
+      }
       handleError(
         "変換に失敗しました",
         err instanceof Error ? err.message : String(err),
       );
     } finally {
+      cancelTokensRef.current.delete(token);
       setIsVectorizing(false);
     }
   }, [
     image,
-    vectorizeMode,
+    vectorizeModes,
     vectorizeTuning,
     cutoutResult,
+    activeMode,
     pushToast,
     handleError,
   ]);
@@ -433,20 +579,41 @@ function App() {
     return image.file.name.replace(/\.[^.]+$/, "");
   }, [image]);
 
+  const isMultiMode = vectorizeModes.length > 1;
+  const activeResult = vectorizeResults.get(activeMode) ?? null;
+
+  const svgFilenameSuffix = useCallback(
+    (mode: VectorizeMode, kind: "original" | "black" | "white"): string => {
+      // In single-mode we keep the legacy "-original" / "-black" / "-white"
+      // suffix so existing automations don't break. Multi-mode prefixes the
+      // mode so both flavors can coexist in the same folder.
+      return isMultiMode ? `${mode}-${kind}` : kind;
+    },
+    [isMultiMode],
+  );
+
+  const buildSvg = useCallback(
+    (svg: string, kind: "original" | "black" | "white"): string => {
+      if (kind === "black") return blackVariant(svg);
+      if (kind === "white") return whiteVariant(svg);
+      return svg;
+    },
+    [],
+  );
+
   const handleSaveSvg = useCallback(
-    async (kind: "original" | "black" | "white") => {
-      if (!vectorizeResult) return;
+    async (mode: VectorizeMode, kind: "original" | "black" | "white") => {
+      const result = vectorizeResults.get(mode);
+      if (!result) return;
       setIsSaving(true);
       try {
-        let svg = vectorizeResult.svg;
-        if (kind === "black") svg = blackVariant(svg);
-        if (kind === "white") svg = whiteVariant(svg);
-        const filename = `${baseName}-${kind}.svg`;
+        const svg = buildSvg(result.svg, kind);
+        const filename = `${baseName}-${svgFilenameSuffix(mode, kind)}.svg`;
         const savedPath = await saveDialogAndWrite({
           contentsBase64: bytesToBase64(new TextEncoder().encode(svg)),
           suggestedFilename: filename,
           fileKind: "svg",
-          title: `${kind} SVG を保存`,
+          title: `${mode === "bw" ? "Monochrome" : "Color"} ${kind} SVG を保存`,
         });
         if (savedPath) {
           pushToast(makeToast("success", "SVG を保存しました", savedPath));
@@ -460,7 +627,7 @@ function App() {
         setIsSaving(false);
       }
     },
-    [vectorizeResult, baseName, pushToast, handleError],
+    [vectorizeResults, baseName, buildSvg, svgFilenameSuffix, pushToast, handleError],
   );
 
   const handleSavePng = useCallback(
@@ -490,9 +657,87 @@ function App() {
     [baseName, pushToast, handleError],
   );
 
+  // Save every available SVG variant and PNG variant in one shot, by
+  // prompting the user to pick a destination folder. PNG variants are
+  // mode-independent and included once; SVG variants cover every mode
+  // that has a Convert result, in stable order.
+  const handleSaveAll = useCallback(async () => {
+    if (vectorizeResults.size === 0 || pngVariants.length === 0) return;
+    setIsSaving(true);
+    try {
+      const files: BundleFile[] = [];
+      for (const mode of vectorizeModes) {
+        const r = vectorizeResults.get(mode);
+        if (!r) continue;
+        for (const kind of ["original", "black", "white"] as const) {
+          const svg = buildSvg(r.svg, kind);
+          files.push({
+            filename: `${baseName}-${svgFilenameSuffix(mode, kind)}.svg`,
+            contentsBase64: bytesToBase64(new TextEncoder().encode(svg)),
+          });
+        }
+      }
+      for (const variant of pngVariants) {
+        const bytes = new Uint8Array(await variant.blob.arrayBuffer());
+        files.push({
+          filename: `${baseName}-${variant.filenameSuffix}.png`,
+          contentsBase64: bytesToBase64(bytes),
+        });
+      }
+      const result = await saveBundleToFolder({
+        files,
+        title: "全形式を書き出す先を選択",
+      });
+      if (result && result.written.length > 0) {
+        pushToast(
+          makeToast(
+            "success",
+            `全形式を保存しました (${result.written.length} ファイル)`,
+            result.targetDir,
+          ),
+        );
+      }
+    } catch (err) {
+      handleError(
+        "一括保存に失敗しました",
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    vectorizeModes,
+    vectorizeResults,
+    pngVariants,
+    baseName,
+    buildSvg,
+    svgFilenameSuffix,
+    pushToast,
+    handleError,
+  ]);
+
   const handleToggleTheme = useCallback(() => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));
   }, []);
+
+  /** User-initiated cancel. Flips every active token; in-flight cutout
+   *  and PNG export check their token at safe points and abort cleanly.
+   *  vtracer is not currently cancellable (separate OS process, no
+   *  plumbing) — the cancel button stays hidden while vtracer is the
+   *  only thing running. */
+  const handleCancel = useCallback(() => {
+    let cancelledSomething = false;
+    for (const token of cancelTokensRef.current) {
+      if (!token.cancelled) {
+        cancelledSomething = true;
+        token.cancelled = true;
+      }
+    }
+    if (!cancelledSomething) return;
+    pushToast(makeToast("info", "処理をキャンセルしました"));
+  }, [pushToast]);
+
+  const isProcessing = isComputing || isGeneratingPng;
 
   const handleShowAbout = useCallback(() => {
     setIsAboutOpen(true);
@@ -502,39 +747,6 @@ function App() {
     setIsAboutOpen(false);
   }, []);
 
-  const status = useMemo(() => {
-    if (isVectorizing) {
-      return { label: "Vectorizing…", working: true };
-    }
-    if (isGeneratingPng) {
-      return { label: "Generating PNG variants…", working: true };
-    }
-    if (isSaving) {
-      return { label: "Saving…", working: true };
-    }
-    if (isComputing) {
-      return { label: "Computing cutout…", working: true };
-    }
-    if (vectorizeResult) {
-      return {
-        label: "Ready",
-        working: false,
-        detail: `${vectorizeResult.pathCount} paths`,
-      };
-    }
-    if (image) {
-      return { label: "Image loaded", working: false };
-    }
-    return { label: "Drop an image to start", working: false };
-  }, [
-    isVectorizing,
-    isGeneratingPng,
-    isSaving,
-    isComputing,
-    vectorizeResult,
-    image,
-  ]);
-
   const showEmpty = !image;
 
   return (
@@ -543,7 +755,7 @@ function App() {
         <div className="app-title">
           <span className="app-title-mark" aria-hidden />
           <span>Hazakura Vectorizer</span>
-          <small>v{APP_VERSION} · local</small>
+          <small>v{APP_VERSION}</small>
         </div>
         <div className="app-header-actions">
           <button
@@ -570,9 +782,10 @@ function App() {
             onSettingsChange={setCutoutSettings}
           />
           <VectorizeOptions
-            mode={vectorizeMode}
+            modes={vectorizeModes}
+            activeMode={activeMode}
             tuning={vectorizeTuning}
-            onModeChange={setVectorizeMode}
+            onModesChange={setVectorizeModes}
             onTuningChange={setVectorizeTuning}
           />
           <div className="convert-bar">
@@ -583,18 +796,74 @@ function App() {
                 }`}
                 aria-hidden
               />
-              <span>
+              <span className="convert-bar-status-text">
                 {isVectorizing
-                  ? "Vectorizing…"
+                  ? vectorizeModes.length > 1
+                    ? `Vectorizing (${vectorizeModes.length} 形式)…`
+                    : "Vectorizing…"
                   : isGeneratingPng
-                  ? "Generating PNG…"
+                  ? `PNG 派生を生成中${
+                      pngProgress != null ? ` · ${pngProgress}%` : ""
+                    }`
                   : isComputing
-                  ? "Computing cutout…"
+                  ? `背景処理中${
+                      cutoutProgress != null ? ` · ${cutoutProgress}%` : ""
+                    }`
                   : image
                   ? "準備完了 — Convert を押してください"
                   : "画像をドロップしてください"}
               </span>
+              {isProcessing && (
+                <button
+                  type="button"
+                  className="button-ghost convert-bar-cancel"
+                  onClick={handleCancel}
+                  aria-label="処理をキャンセル"
+                >
+                  ✕ キャンセル
+                </button>
+              )}
             </div>
+            {isVectorizing ? (
+              // Vectorize is the operation the user just kicked off, so
+              // its indeterminate bar takes precedence over the cutout's
+              // determinate bar. A concurrent cutout (user dragged a
+              // slider mid-Convert) is a side effect; we just don't
+              // surface it visually.
+              <div
+                className="convert-bar-progress is-indeterminate"
+                role="progressbar"
+                aria-label="ベクター化の進捗"
+              >
+                <div className="convert-bar-progress-fill" />
+              </div>
+            ) : (isComputing || isGeneratingPng) ? (
+              <div
+                className="convert-bar-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={
+                  isComputing ? (cutoutProgress ?? 0) : (pngProgress ?? 0)
+                }
+                aria-label={
+                  isComputing
+                    ? "背景処理の進捗"
+                    : "PNG 派生生成の進捗"
+                }
+              >
+                <div
+                  className="convert-bar-progress-fill"
+                  style={{
+                    width: `${
+                      isComputing
+                        ? cutoutProgress ?? 0
+                        : pngProgress ?? 0
+                    }%`,
+                  }}
+                />
+              </div>
+            ) : null}
             <button
               className="button button-large"
               disabled={
@@ -651,9 +920,9 @@ function App() {
               title="Cutout"
               meta={
                 cutoutResult?.boundingBox
-                  ? `trim ${cutoutResult.boundingBox.width}×${cutoutResult.boundingBox.height}`
+                  ? `${cutoutResult.boundingBox.width} × ${cutoutResult.boundingBox.height}`
                   : isComputing
-                  ? "computing…"
+                  ? ""
                   : undefined
               }
               empty={!cutoutResult && !isComputing}
@@ -671,78 +940,65 @@ function App() {
             <PreviewPane
               title="SVG"
               meta={
-                vectorizeResult
-                  ? `${vectorizeResult.width}×${vectorizeResult.height} · ${vectorizeResult.pathCount} paths`
+                activeResult
+                  ? `${activeResult.width}×${activeResult.height} · ${activeResult.pathCount} paths`
                   : undefined
               }
-              empty={!vectorizeResult}
+              headerExtra={
+                isMultiMode && vectorizeResults.size > 1 ? (
+                  <div
+                    className="mode-chip-group"
+                    role="tablist"
+                    aria-label="表示するモード"
+                  >
+                    {vectorizeModes.map((mode) => {
+                      const has = vectorizeResults.has(mode);
+                      if (!has) return null;
+                      const label = mode === "color" ? "Color" : "Monochrome";
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="tab"
+                          aria-selected={activeMode === mode}
+                          className={`mode-chip ${
+                            activeMode === mode ? "is-active" : ""
+                          }`}
+                          onClick={() => setActiveMode(mode)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null
+              }
+              empty={!activeResult}
               emptyText="「Convert」を押すと SVG が表示されます"
             >
-              {vectorizeResult && (
+              {activeResult && (
                 <div
                   className="svg-preview-host"
                   role="img"
-                  aria-label={`ベクター化されたSVGプレビュー ${vectorizeResult.width}×${vectorizeResult.height}, ${vectorizeResult.pathCount} パス`}
-                  dangerouslySetInnerHTML={{ __html: vectorizeResult.svg }}
+                  aria-label={`ベクター化されたSVGプレビュー ${activeResult.width}×${activeResult.height}, ${activeResult.pathCount} パス`}
+                  dangerouslySetInnerHTML={{ __html: activeResult.svg }}
                 />
               )}
             </PreviewPane>
-
-            <div className="preview-pane">
-              <div className="preview-pane-header">
-                <strong>処理の流れ</strong>
-                <span className="meta">vtracer</span>
-              </div>
-              <div
-                className="preview-pane-body"
-                style={{ flexDirection: "column", gap: "var(--space-3)" }}
-              >
-                <ol className="flow-list">
-                  <li>
-                    <strong>背景処理</strong>
-                    <span>四隅から背景色を推定し、白を除去。</span>
-                  </li>
-                  <li>
-                    <strong>透過 PNG に変換</strong>
-                    <span>前処理済み画像を vtracer に渡します。</span>
-                  </li>
-                  <li>
-                    <strong>vtracer で SVG 化</strong>
-                    <span>カラーパスまたは 2 値パスを生成。</span>
-                  </li>
-                  <li>
-                    <strong>PNG 派生を書き出し</strong>
-                    <span>透過 / 白背景 / 512 / 1024px を生成。</span>
-                  </li>
-                </ol>
-                <div className="dim" style={{ fontSize: "var(--text-xs)" }}>
-                  {image
-                    ? `入力: ${image.file.name}`
-                    : "画像が必要です"}
-                </div>
-              </div>
-            </div>
           </div>
 
           <ExportButtons
-            hasSvg={!!vectorizeResult}
+            hasSvg={vectorizeResults.size > 0}
+            modes={vectorizeModes}
+            svgResults={vectorizeResults}
             pngVariants={pngVariants}
             isBusy={isSaving}
             onSaveSvg={handleSaveSvg}
             onSavePng={handleSavePng}
+            onSaveAll={handleSaveAll}
           />
         </section>
       </main>
-
-      <footer className="app-status">
-        <span
-          className={`app-status-dot ${
-            status.working ? "is-working" : ""
-          }`}
-        />
-        <span>{status.label}</span>
-        {status.detail && <span className="dim">· {status.detail}</span>}
-      </footer>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       {isAboutOpen && (

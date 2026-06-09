@@ -7,6 +7,28 @@ use crate::cli::vtracer::{
 };
 use crate::error::{AppError, AppResult};
 
+/// Single mode spec for multi-mode vectorization. `key` is a short
+/// caller-chosen identifier (e.g. "color", "bw") used to pair the result
+/// with the request on the JS side.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VectorizeSpec {
+    pub key: String,
+    pub options: VectorizeOptionsJson,
+}
+
+/// One result in a multi-mode vectorize call. Keyed by the same `key` the
+/// caller provided in the request.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VectorizeMultiEntry {
+    pub key: String,
+    pub svg: String,
+    pub width: u32,
+    pub height: u32,
+    pub path_count: u32,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VectorizeOptionsJson {
@@ -56,34 +78,100 @@ pub async fn vectorize_image(
     let opts = to_vtracer_options(&options)?;
 
     let svg = tauri::async_runtime::spawn_blocking(move || {
-        let tmp_in = tempfile::Builder::new()
-            .suffix(".png")
-            .tempfile()
-            .map_err(AppError::Io)?;
-        std::fs::write(tmp_in.path(), &image_bytes)?;
-        let tmp_out = tempfile::Builder::new()
-            .suffix(".svg")
-            .tempfile()
-            .map_err(AppError::Io)?;
-        let svg_path = tmp_out.path().to_path_buf();
-        let svg = vtracer::vectorize(tmp_in.path(), &svg_path, &opts)?;
-        let _ = std::fs::remove_file(&svg_path);
-        let _ = std::fs::remove_file(tmp_in.path());
-        Ok::<String, AppError>(svg)
+        run_vtracer_job(&image_bytes, &opts)
     })
     .await
     .map_err(|e| AppError::VtracerFailed(format!("worker join: {e}")))??;
 
-    let width = vtracer::extract_viewbox(&svg).map(|(w, _)| w).unwrap_or(0);
-    let height = vtracer::extract_viewbox(&svg).map(|(_, h)| h).unwrap_or(0);
-    let path_count = vtracer::count_paths(&svg);
+    Ok(svg_to_result(&svg))
+}
 
-    Ok(VectorizeResult {
-        svg,
+/// Vectorize the same image with multiple (mode, tuning) combinations in
+/// parallel. Returns one entry per spec, in submission order.
+///
+/// Each spec is dispatched to its own `spawn_blocking` task, and each task
+/// in turn runs a separate vtracer subprocess (vtracer ships as a CLI, not a
+/// library), so the two passes execute concurrently as OS processes. The
+/// caller re-pairs the entries with their request via the `key` field.
+///
+/// This is the path used by the "Color + Monochrome in one Convert"
+/// feature in the UI.
+#[tauri::command]
+pub async fn vectorize_image_multi(
+    image_bytes: Vec<u8>,
+    specs: Vec<VectorizeSpec>,
+) -> AppResult<Vec<VectorizeMultiEntry>> {
+    if image_bytes.is_empty() {
+        return Err(AppError::InvalidOption("image_bytes is empty".into()));
+    }
+    if specs.is_empty() {
+        return Err(AppError::InvalidOption("specs is empty".into()));
+    }
+
+    let mut prepared: Vec<(String, VtracerOptions)> = Vec::with_capacity(specs.len());
+    for spec in specs {
+        if spec.key.trim().is_empty() {
+            return Err(AppError::InvalidOption("spec.key is empty".into()));
+        }
+        let opts = to_vtracer_options(&spec.options)?;
+        prepared.push((spec.key, opts));
+    }
+
+    let mut handles = Vec::with_capacity(prepared.len());
+    for (key, opts) in prepared {
+        let bytes = image_bytes.clone();
+        let handle = tauri::async_runtime::spawn_blocking(move || {
+            let svg = run_vtracer_job(&bytes, &opts)?;
+            Ok::<(String, String), AppError>((key, svg))
+        });
+        handles.push(handle);
+    }
+
+    let mut out: Vec<VectorizeMultiEntry> = Vec::with_capacity(handles.len());
+    for handle in handles {
+        let (key, svg) = handle
+            .await
+            .map_err(|e| AppError::VtracerFailed(format!("worker join: {e}")))??;
+        let result = svg_to_result(&svg);
+        out.push(VectorizeMultiEntry {
+            key,
+            svg: result.svg,
+            width: result.width,
+            height: result.height,
+            path_count: result.path_count,
+        });
+    }
+
+    Ok(out)
+}
+
+fn run_vtracer_job(image_bytes: &[u8], opts: &VtracerOptions) -> AppResult<String> {
+    let tmp_in = tempfile::Builder::new()
+        .suffix(".png")
+        .tempfile()
+        .map_err(AppError::Io)?;
+    std::fs::write(tmp_in.path(), image_bytes)?;
+    let tmp_out = tempfile::Builder::new()
+        .suffix(".svg")
+        .tempfile()
+        .map_err(AppError::Io)?;
+    let svg_path = tmp_out.path().to_path_buf();
+    let svg = vtracer::vectorize(tmp_in.path(), &svg_path, opts)?;
+    let _ = std::fs::remove_file(&svg_path);
+    let _ = std::fs::remove_file(tmp_in.path());
+    Ok(svg)
+}
+
+fn svg_to_result(svg: &str) -> VectorizeResult {
+    let width = vtracer::extract_viewbox(svg).map(|(w, _)| w).unwrap_or(0);
+    let height = vtracer::extract_viewbox(svg).map(|(_, h)| h).unwrap_or(0);
+    let path_count = vtracer::count_paths(svg);
+    VectorizeResult {
+        svg: svg.to_string(),
         width,
         height,
         path_count,
-    })
+    }
 }
 
 #[allow(dead_code)]

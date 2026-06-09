@@ -4,6 +4,9 @@ export type CurvePreset = "logo" | "icon" | "simple-color" | "monochrome";
 
 export type VectorizeMode = "color" | "bw";
 
+/** Multi-mode vectorize state. Always sorted: `["color"]` < `["color", "bw"]`. */
+export type VectorizeModeSet = ReadonlyArray<VectorizeMode>;
+
 export type Level = "low" | "medium" | "high";
 
 export interface VectorizePreset {
@@ -50,6 +53,15 @@ export interface VectorizeResult {
   width: number;
   height: number;
   pathCount: number;
+}
+
+/** A vectorize result paired with the mode that produced it. The frontend
+ * keeps a map of these so multi-mode ("Color + Monochrome") Convert jobs
+ * can be previewed, exported, and saved without re-running vtracer.
+ */
+export interface VectorizeModeResult {
+  mode: VectorizeMode;
+  result: VectorizeResult;
 }
 
 export type ToastKind = "info" | "success" | "error" | "warning";

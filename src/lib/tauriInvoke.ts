@@ -20,6 +20,29 @@ export function vectorizeImage(
   });
 }
 
+export interface VectorizeMultiSpec {
+  key: string;
+  options: VectorizeOptionsArgs;
+}
+
+export interface VectorizeMultiEntry {
+  key: string;
+  svg: string;
+  width: number;
+  height: number;
+  pathCount: number;
+}
+
+export function vectorizeImageMulti(
+  imageBytes: Uint8Array,
+  specs: VectorizeMultiSpec[],
+): Promise<VectorizeMultiEntry[]> {
+  return invoke<VectorizeMultiEntry[]>("vectorize_image_multi", {
+    imageBytes: Array.from(imageBytes),
+    specs,
+  });
+}
+
 export interface SaveRequest {
   contentsBase64: string;
   suggestedFilename: string;
@@ -31,6 +54,27 @@ export function saveDialogAndWrite(
   request: SaveRequest,
 ): Promise<string | null> {
   return invoke<string | null>("save_dialog_and_write", { request });
+}
+
+export interface BundleFile {
+  filename: string;
+  contentsBase64: string;
+}
+
+export interface BundleRequest {
+  files: BundleFile[];
+  title: string;
+}
+
+export interface BundleWriteResult {
+  targetDir: string;
+  written: string[];
+}
+
+export function saveBundleToFolder(
+  request: BundleRequest,
+): Promise<BundleWriteResult | null> {
+  return invoke<BundleWriteResult | null>("save_bundle_to_folder", { request });
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
